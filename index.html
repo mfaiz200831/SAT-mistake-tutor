@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SAT Mistake Tutor</title>
+
+  <script>
+    // Apply the saved theme before the page is drawn, so it does not flash
+    (function () {
+      var theme = "dark";
+      try {
+        theme = localStorage.getItem("theme") || "dark";
+      } catch (error) {
+        // Storage is not available. Use the dark theme.
+      }
+      document.documentElement.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+    })();
+  </script>
+
+  <style>
+    /* All colors live here, so the light and dark themes are easy to change */
+    :root {
+      color-scheme: dark;
+      --bg: #14161a;
+      --sidebar-bg: #101216;
+      --panel: #1e2127;
+      --panel-2: #2a2e35;
+      --border: #2a2e35;
+      --border-2: #2f343c;
+      --input-border: #3a3f48;
+      --text: #e8e8e8;
+      --text-soft: #c9ced6;
+      --muted: #8a919c;
+      --accent: #3b4a63;
+      --bar: #6b83a8;
+      --danger: #c0392b;
+      --error-bg: #3a1d1d;
+      --error-border: #6b2c2c;
+      --error-text: #ffb4ab;
+      --note: #e0c070;
+      --listening: #ff8a80;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f7f6f3;
+      --sidebar-bg: #efede8;
+      --panel: #ffffff;
+      --panel-2: #e7e4de;
+      --border: #dcd9d2;
+      --border-2: #d3d0c8;
+      --input-border: #c7c3ba;
+      --text: #222222;
+      --text-soft: #444a52;
+      --muted: #6b707a;
+      --accent: #3b4a63;
+      --bar: #4f6a92;
+      --danger: #c0392b;
+      --error-bg: #fdecea;
+      --error-border: #f5c2be;
+      --error-text: #8a1f17;
+      --note: #8a6410;
+      --listening: #c0392b;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 18px;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+    }
+
+    /* The page has two columns: the chat list (sidebar) and the app */
+    .layout {
+      display: flex;
+      width: 100%;
+      max-width: 1020px;
+      height: 100dvh;
+    }
+
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+    }
+
+    .sidebar-top {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+    }
+    #new-chat-btn { flex: 1; }
+    .sidebar-close { display: none; }
+
+    .chat-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px 12px;
+    }
+
+    .chat-item {
+      display: flex;
+      align-items: center;
+      border-radius: 10px;
+    }
+    .chat-item:hover, .chat-item.active { background: var(--panel-2); }
+
+    .chat-open {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      padding: 10px 8px;
+      font-size: 16px;
+      background: transparent;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chat-delete {
+      background: transparent;
+      color: var(--muted);
+      font-size: 20px;
+      padding: 6px 12px;
+    }
+    .chat-delete:hover { color: var(--danger); }
+
+    .backdrop { display: none; }
+
+    .app {
+      flex: 1;
+      min-width: 0;
+      max-width: 760px;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .title { flex: 1; font-size: 20px; font-weight: bold; }
+    .menu-btn { display: none; }
+
+    nav {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .tab {
+      padding: 9px 12px;
+      font-size: 16px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+    .tab.active { background: var(--accent); color: #fff; }
+
+    /* Each page (Chat, My mistakes, Progress) is a "view" */
+    .view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #welcome { margin: auto; max-width: 420px; }
+
+    .bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .bubble-photo {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+
+    .photo-note {
+      font-size: 14px;
+      font-style: italic;
+      opacity: 0.8;
+      margin-bottom: 6px;
+    }
+
+    .user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .bot {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+    }
+
+    .error {
+      align-self: flex-start;
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
+    }
+
+    /* Typing indicator: three bouncing dots */
+    #typing {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: none;
+      gap: 5px;
+    }
+    #typing.show { display: flex; }
+    #typing span {
+      width: 8px;
+      height: 8px;
+      background: var(--muted);
+      border-radius: 50%;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    #typing span:nth-child(2) { animation-delay: 0.2s; }
+    #typing span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* Voice status line: "Listening..." or a friendly message */
+    #voice-status {
+      display: none;
+      padding: 8px 16px;
+      font-size: 16px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+    #voice-status.show { display: flex; align-items: center; gap: 8px; }
+    #voice-status.listening { color: var(--listening); }
+    #voice-status.note { color: var(--note); }
+
+    #voice-status .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff5a4d;
+      animation: blink 1s infinite ease-in-out;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
+
+    /* The photo waiting to be sent with your next message */
+    #attachment {
+      position: relative;
+      align-self: flex-start;
+      margin: 8px 16px 0;
+    }
+    #attachment img {
+      display: block;
+      height: 72px;
+      border-radius: 10px;
+      border: 1px solid var(--input-border);
+    }
+    #attachment-remove {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border-radius: 50%;
+      background: var(--danger);
+      font-size: 16px;
+      line-height: 24px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    #input {
+      flex: 1;
+      min-width: 0;
+      font-family: inherit;
+      font-size: 18px;
+      padding: 10px 12px;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      resize: none;
+      max-height: 140px;
+    }
+    #input::placeholder { color: var(--muted); }
+    #input:focus { outline: none; border-color: var(--bar); }
+
+    button {
+      font-family: inherit;
+      font-size: 18px;
+      padding: 0 16px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.small { font-size: 16px; padding: 10px 12px; }
+    button.danger { background: var(--danger); }
+    button.plain { background: var(--panel-2); color: var(--text); }
+
+    /* Round icon buttons: microphone and camera */
+    .icon-button {
+      width: 44px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--panel-2);
+      color: var(--text);
+    }
+    .icon-button svg { width: 22px; height: 22px; }
+    #mic.unsupported { opacity: 0.5; }
+    #mic.on {
+      background: var(--danger);
+      color: #fff;
+      animation: pulse 1.4s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.6); }
+      70% { box-shadow: 0 0 0 10px rgba(192, 57, 43, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0); }
+    }
+
+    /* Pages: My mistakes and Progress */
+    .page-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-bar select { flex: 1; min-width: 0; }
+
+    .page-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .page-footer {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 24px 8px;
+      line-height: 1.45;
+    }
+    .empty.small { font-size: 16px; padding: 12px 8px; }
+
+    .section-title { margin: 0 0 12px; font-size: 20px; }
+    .hint { color: var(--muted); font-size: 16px; margin: 12px 0 0; line-height: 1.4; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .card-top { color: var(--muted); font-size: 15px; }
+    .card-concept { font-weight: bold; margin: 2px 0 6px; overflow-wrap: anywhere; }
+    .card-answers { overflow-wrap: anywhere; }
+    .card-note { margin-top: 6px; color: var(--text-soft); overflow-wrap: anywhere; }
+
+    /* Bar chart of the concepts you miss most */
+    .bar-row { margin-bottom: 12px; }
+    .bar-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    .bar-label { overflow-wrap: anywhere; }
+    .bar-count { color: var(--muted); }
+    .bar-track {
+      height: 14px;
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .bar-fill { height: 100%; background: var(--muted); border-radius: 7px; }
+    .bar-fill.top { background: var(--bar); }
+
+    /* Pop-up windows */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .dialog {
+      width: 100%;
+      max-width: 520px;
+      max-height: 100%;
+      overflow-y: auto;
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dialog h2 { margin: 0; font-size: 20px; }
+    .dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 16px; }
+    .dialog-actions { display: flex; gap: 10px; }
+    .dialog-actions button { flex: 1; padding: 12px 0; }
+    #mistake-message { margin: 0; min-height: 20px; color: var(--note); font-size: 16px; }
+
+    .dialog input, .dialog select, .dialog textarea, .page-bar select {
+      font-family: inherit;
+      font-size: 17px;
+      padding: 9px 10px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      width: 100%;
+    }
+    .dialog textarea { resize: vertical; }
+
+    /* Small message that fades away */
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 90px;
+      transform: translateX(-50%);
+      max-width: 90%;
+      padding: 10px 16px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #3a3f48;
+      border-radius: 12px;
+      font-size: 16px;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 80;
+    }
+    #toast.show { opacity: 1; }
+
+    /* Full-screen camera window (always dark) */
+    #camera-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.92);
+      display: flex;
+      justify-content: center;
+    }
+
+    .camera-box {
+      width: 100%;
+      max-width: 720px;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 10px;
+    }
+
+    .camera-stage {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    #camera-video, #camera-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #camera-message {
+      margin: 0;
+      min-height: 22px;
+      text-align: center;
+      color: #e0c070;
+      font-size: 16px;
+    }
+
+    .camera-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .camera-actions button {
+      flex: 1;
+      padding: 14px 0;
+      background: #3b4a63;
+      color: #fff;
+    }
+    #camera-close, #camera-retake { background: #2a2e35; }
+
+    /* Phones and small windows: the chat list becomes a slide-in drawer */
+    @media (max-width: 800px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(300px, 85vw);
+        transform: translateX(-100%);
+        transition: transform 0.2s;
+        z-index: 40;
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-close { display: block; }
+      .menu-btn { display: block; }
+      .backdrop:not([hidden]) {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 39;
+      }
+      .app { max-width: none; }
+    }
+
+    @media (max-width: 480px) {
+      body { font-size: 17px; }
+      header { padding: 10px 12px 8px; }
+      .tab { flex: 1; padding: 10px 6px; }
+      .toolbar { padding: 8px 12px; }
+      .toolbar button { flex: 1; }
+      #chat, .page-body { padding: 12px; }
+      .bubble { max-width: 92%; }
+      .input-row { padding-left: 10px; padding-right: 10px; gap: 6px; }
+      .icon-button { width: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- Chat list (sidebar) -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-top">
+        <button id="new-chat-btn" class="small" type="button">+ New chat</button>
+        <button id="sidebar-close" class="small plain sidebar-close" type="button" aria-label="Close chat list">&times;</button>
+      </div>
+      <div id="chat-list" class="chat-list"></div>
+    </aside>
+    <div id="sidebar-backdrop" class="backdrop" hidden></div>
+
+    <div class="app">
+      <header>
+        <div class="header-top">
+          <button id="menu-btn" class="small plain menu-btn" type="button" aria-label="Show chat list">Chats</button>
+          <div class="title">SAT Mistake Tutor</div>
+          <button id="theme-btn" class="small plain" type="button">Light mode</button>
+        </div>
+        <nav>
+          <button class="tab active" type="button" data-view="chat">Chat</button>
+          <button class="tab" type="button" data-view="mistakes">My mistakes</button>
+          <button class="tab" type="button" data-view="progress">Progress</button>
+        </nav>
+      </header>
+
+      <!-- PAGE 1: Chat -->
+      <section id="view-chat" class="view">
+        <div class="toolbar">
+          <button id="save-mistake-btn" class="small" type="button">Save this mistake</button>
+          <button id="quiz-btn" class="small plain" type="button">Quiz me on my weak concepts</button>
+        </div>
+
+        <div id="chat">
+          <p id="welcome" class="empty">Ask about an SAT question. Type it, say it with the mic, or take a photo with the camera.</p>
+          <div id="typing"><span></span><span></span><span></span></div>
+        </div>
+
+        <div id="voice-status"></div>
+
+        <div id="attachment" hidden>
+          <img id="attachment-img" alt="Photo to send" />
+          <button id="attachment-remove" type="button" aria-label="Remove photo" title="Remove photo">&times;</button>
+        </div>
+
+        <div class="input-row">
+          <textarea id="input" rows="1" placeholder="Type a message..."></textarea>
+
+          <button id="mic" class="icon-button" type="button" title="Voice input (tap to start, tap to stop)" aria-label="Voice input" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+              <path d="M5 11a7 7 0 0 0 14 0"></path>
+              <line x1="12" y1="18" x2="12" y2="22"></line>
+              <line x1="8" y1="22" x2="16" y2="22"></line>
+            </svg>
+          </button>
+
+          <button id="camera-btn" class="icon-button" type="button" title="Take a photo" aria-label="Take a photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </button>
+
+          <button id="send">Send</button>
+        </div>
+      </section>
+
+      <!-- PAGE 2: My mistakes -->
+      <section id="view-mistakes" class="view" hidden>
+        <div class="page-bar">
+          <label for="concept-filter">Concept</label>
+          <select id="concept-filter"></select>
+        </div>
+        <div id="mistakes-list" class="page-body"></div>
+        <div class="page-footer">
+          <button id="delete-all-btn" class="small danger" type="button">Delete all my data</button>
+        </div>
+      </section>
+
+      <!-- PAGE 3: Progress -->
+      <section id="view-progress" class="view" hidden>
+        <div id="progress-body" class="page-body"></div>
+        <div class="page-footer">
+          <button id="quiz-btn-2" class="small" type="button">Quiz me on my weak concepts</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Camera window (hidden until you tap the camera button) -->
+  <div id="camera-overlay" hidden>
+    <div class="camera-box">
+      <div class="camera-stage">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <img id="camera-photo" alt="Captured photo" hidden />
+      </div>
+      <p id="camera-message"></p>
+      <div class="camera-actions">
+        <button id="camera-close" type="button">Close</button>
+        <button id="camera-capture" type="button">Capture</button>
+        <button id="camera-retake" type="button" hidden>Retake</button>
+        <button id="camera-use" type="button" hidden>Use</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Save this mistake" window -->
+  <div id="mistake-overlay" class="overlay" hidden>
+    <div class="dialog">
+      <h2>Save this mistake</h2>
+      <p class="hint" style="margin:0">Please check everything before saving. The AI can make mistakes, especially about the correct answer.</p>
+
+      <label>Section
+        <select id="f-section">
+          <option>Algebra</option>
+          <option>Advanced Math</option>
+          <option>Problem-Solving and Data Analysis</option>
+          <option>Geometry and Trigonometry</option>
+          <option>Craft and Structure</option>
+          <option>Information and Ideas</option>
+          <option>Standard English Conventions</option>
+          <option>Expression of Ideas</option>
+        </select>
+      </label>
+
+      <label>Concept
+        <input id="f-concept" list="concept-options" maxlength="100" placeholder="for example: systems with quadratics" />
+      </label>
+      <datalist id="concept-options"></datalist>
+
+      <label>My answer
+        <input id="f-my" maxlength="200" />
+      </label>
+
+      <label>Correct answer
+        <input id="f-correct" maxlength="200" />
+      </label>
+
+      <label>Short note
+        <textarea id="f-note" rows="3" maxlength="500"></textarea>
+      </label>
+
+      <p id="mistake-message"></p>
+
+      <div class="dialog-actions">
+        <button id="f-cancel" type="button" class="plain">Cancel</button>
+        <button id="f-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+
+  <script>
+    /* ---------------------------------------------------------------
+       Page elements we need to talk to
+    --------------------------------------------------------------- */
+    const chat = document.getElementById("chat");
+    const welcome = document.getElementById("welcome");
+    const typing = document.getElementById("typing");
+    const input = document.getElementById("input");
+    const sendButton = document.getElementById("send");
+    const micButton = document.getElementById("mic");
+    const voiceStatus = document.getElementById("voice-status");
+
+    const cameraButton = document.getElementById("camera-btn");
+    const cameraOverlay = document.getElementById("camera-overlay");
+    const cameraVideo = document.getElementById("camera-video");
+    const cameraPhoto = document.getElementById("camera-photo");
+    const cameraMessage = document.getElementById("camera-message");
+    const closeButton = document.getElementById("camera-close");
+    const captureButton = document.getElementById("camera-capture");
+    const retakeButton = document.getElementById("camera-retake");
+    const useButton = document.getElementById("camera-use");
+    const attachment = document.getElementById("attachment");
+    const attachmentImg = document.getElementById("attachment-img");
+    const attachmentRemove = document.getElementById("attachment-remove");
+
+    const sidebar = document.getElementById("sidebar");
+    const backdrop = document.getElementById("sidebar-backdrop");
+    const menuButton = document.getElementById("menu-btn");
+    const sidebarClose = document.getElementById("sidebar-close");
+    const newChatButton = document.getElementById("new-chat-btn");
+    const chatList = document.getElementById("chat-list");
+    const themeButton = document.getElementById("theme-btn");
+
+    const tabButtons = document.querySelectorAll(".tab");
+    const views = {
+      chat: document.getElementById("view-chat"),
+      mistakes: document.getElementById("view-mistakes"),
+      progress: document.getElementById("view-progress"),
+    };
+    const saveMistakeButton = document.getElementById("save-mistake-btn");
+    const quizButton = document.getElementById("quiz-btn");
+    const quizButton2 = document.getElementById("quiz-btn-2");
+    const conceptFilter = document.getElementById("concept-filter");
+    const mistakesList = document.getElementById("mistakes-list");
+    const progressBody = document.getElementById("progress-body");
+    const deleteAllButton = document.getElementById("delete-all-btn");
+
+    const mistakeOverlay = document.getElementById("mistake-overlay");
+    const formSection = document.getElementById("f-section");
+    const formConcept = document.getElementById("f-concept");
+    const formMy = document.getElementById("f-my");
+    const formCorrect = document.getElementById("f-correct");
+    const formNote = document.getElementById("f-note");
+    const formMessage = document.getElementById("mistake-message");
+    const formSave = document.getElementById("f-save");
+    const formCancel = document.getElementById("f-cancel");
+    const conceptOptions = document.getElementById("concept-options");
+    const toastBox = document.getElementById("toast");
+
+    /* ---------------------------------------------------------------
+       Friendly messages
+    --------------------------------------------------------------- */
+    const FRIENDLY_ERROR = "Sorry, something went wrong on my side. Please try again in a moment.";
+    const NO_CONNECTION = "I can't reach the app. Make sure it is still running in the terminal, then try again.";
+    const DATA_ERROR = "I couldn't load your saved data. Make sure the app is still running in the terminal, then try again.";
+    const PHOTO_ONLY_TEXT = "Please look at this photo.";
+
+    // The backend sends a short code when Gemini fails. Each code gets a kind message.
+    const CHAT_ERRORS = {
+      quota: "I've hit the free usage limit for now. Please wait a minute and try again. If it keeps happening, today's free quota may be used up.",
+      key: "There's a problem with the API key. Check GEMINI_API_KEY in your .env file, then restart the app.",
+      model: "The AI model isn't available. Check GEMINI_MODEL and GEMINI_IMAGE_MODEL in your .env file, then restart the app.",
+      busy: "The AI service is busy right now. Please try again in a moment.",
+      other: FRIENDLY_ERROR,
+    };
+
+    // The conversation so far. Sent to the backend with every request.
+    const messages = [];
+    let isSending = false;
+
+    // Which saved chat is open. id is null for a new chat that is not saved yet.
+    let currentChat = { id: null };
+
+    /* ---------------------------------------------------------------
+       Small helpers
+    --------------------------------------------------------------- */
+
+    // Make an element. Text is added as plain text, so it is always safe.
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    // Show a small message at the bottom that fades away
+    let toastTimer = null;
+    function toast(text) {
+      toastBox.textContent = text;
+      toastBox.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastBox.classList.remove("show"), 4000);
+    }
+
+    // Talk to our own backend. Returns the answer as JSON.
+    async function api(path, options) {
+      let response;
+      try {
+        response = await fetch(path, options);
+      } catch (error) {
+        const failure = new Error(NO_CONNECTION);
+        failure.status = 0;
+        throw failure;
+      }
+
+      if (!response.ok) {
+        let detail = "Something went wrong. Please try again.";
+        try {
+          const data = await response.json();
+          if (typeof data.detail === "string") detail = data.detail;
+        } catch (error) {
+          // The answer was not JSON. Keep the friendly message.
+        }
+        const failure = new Error(detail);
+        failure.status = response.status;
+        throw failure;
+      }
+      return response.json();
+    }
+
+    // For sending JSON data to the backend
+    function jsonOptions(method, data) {
+      return {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      };
+    }
+
+    /* ---------------------------------------------------------------
+       Light / dark theme
+    --------------------------------------------------------------- */
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      themeButton.textContent = theme === "light" ? "Dark mode" : "Light mode";
+      try {
+        localStorage.setItem("theme", theme);
+      } catch (error) {
+        // Storage is not available. The theme just won't be remembered.
+      }
+    }
+
+    themeButton.addEventListener("click", () => {
+      const isLight = document.documentElement.getAttribute("data-theme") === "light";
+      applyTheme(isLight ? "dark" : "light");
+    });
+
+    applyTheme(document.documentElement.getAttribute("data-theme") || "dark");
+
+    /* ---------------------------------------------------------------
+       Chat helpers
+    --------------------------------------------------------------- */
+
+    function addBubble(kind, text, imageBase64, photoNote) {
+      const div = document.createElement("div");
+      div.className = "bubble " + kind;
+      if (imageBase64) {
+        const photo = document.createElement("img");
+        photo.className = "bubble-photo";
+        photo.alt = "Your photo";
+        photo.src = "data:image/jpeg;base64," + imageBase64;
+        div.appendChild(photo);
+      } else if (photoNote) {
+        // A chat reopened from history: the photo itself was not kept
+        div.appendChild(el("div", "photo-note", "Photo (not kept in history)"));
+      }
+      if (text) div.appendChild(document.createTextNode(text));
+      chat.insertBefore(div, typing); // keep the typing dots at the bottom
+      welcome.hidden = true;
+      scrollToBottom();
+      return div;
+    }
+
+    function scrollToBottom() {
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // Remove all bubbles from the screen
+    function resetChatScreen() {
+      chat.querySelectorAll(".bubble").forEach((node) => node.remove());
+      welcome.hidden = false;
+    }
+
+    function autoGrow() {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    }
+
+    function setBusy(busy) {
+      isSending = busy;
+      sendButton.disabled = busy;
+      typing.classList.toggle("show", busy);
+      if (busy) scrollToBottom();
+    }
+
+    /* ---------------------------------------------------------------
+       Voice input (SpeechRecognition)
+       Tap the mic once to start, tap again to stop. It never stops
+       on its own: if the browser ends recognition, we restart it.
+    --------------------------------------------------------------- */
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    const UNSUPPORTED_MESSAGE =
+      "Voice input isn't supported in this browser. Please use Google Chrome.";
+
+    let recognition = null;
+    let wantListening = false;   // true from "tap to start" until "tap to stop"
+    let discardResults = false;  // true when we cancel (for example when sending)
+    let baseText = "";           // what was in the box when listening started
+    let finalText = "";          // finished words from this listening session
+    let lastInterim = "";        // words still being recognised
+    let lastStart = 0;
+    let fastEnds = 0;            // counts restarts that ended almost instantly
+
+    // Join two pieces of text with exactly one space
+    function joinText(a, b) {
+      a = a.trim();
+      b = b.trim();
+      return a && b ? a + " " + b : a || b;
+    }
+
+    function showVoiceStatus(text, kind) {
+      voiceStatus.className = "show " + kind;
+      voiceStatus.replaceChildren();
+      if (kind === "listening") {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        voiceStatus.appendChild(dot);
+      }
+      voiceStatus.appendChild(document.createTextNode(text));
+    }
+
+    function hideVoiceStatus() {
+      voiceStatus.className = "";
+      voiceStatus.replaceChildren();
+    }
+
+    function setListeningUI(on) {
+      micButton.classList.toggle("on", on);
+      micButton.setAttribute("aria-pressed", String(on));
+      input.readOnly = on; // edit after you tap stop
+      if (on) {
+        showVoiceStatus("Listening... tap the mic to stop", "listening");
+      } else {
+        hideVoiceStatus();
+      }
+    }
+
+    function updateBox(interim) {
+      input.value = joinText(joinText(baseText, finalText), interim);
+      autoGrow();
+      input.scrollTop = input.scrollHeight;
+    }
+
+    function handleResult(event) {
+      if (discardResults) return;
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript;
+        if (result.isFinal) {
+          finalText = joinText(finalText, text);
+        } else {
+          interim = joinText(interim, text);
+        }
+      }
+      lastInterim = interim;
+      updateBox(interim);
+    }
+
+    // Something went wrong and we can't continue: stop and explain
+    function failListening(message) {
+      wantListening = false;
+      micButton.classList.remove("on");
+      micButton.setAttribute("aria-pressed", "false");
+      input.readOnly = false;
+      showVoiceStatus(message, "note");
+    }
+
+    function handleError(event) {
+      const errorTexts = {
+        "not-allowed":
+          "The microphone is blocked. Click the lock icon next to the address bar, allow the microphone, then tap the mic again.",
+        "service-not-allowed":
+          "The microphone is blocked. Click the lock icon next to the address bar, allow the microphone, then tap the mic again.",
+        "audio-capture":
+          "I can't find a microphone. Check that one is connected, then tap the mic again.",
+        "network":
+          "Voice input needs an internet connection. Check your connection, then tap the mic again.",
+      };
+      if (errorTexts[event.error]) {
+        failListening(errorTexts[event.error]);
+      }
+      // Other errors, like "no-speech", are normal. The browser ends
+      // recognition, and handleEnd restarts it.
+    }
+
+    function handleEnd() {
+      // Keep any words that were still being recognised
+      if (lastInterim && !discardResults) {
+        finalText = joinText(finalText, lastInterim);
+        lastInterim = "";
+        updateBox("");
+      }
+
+      if (!wantListening) return;
+
+      // The browser stopped by itself (for example after a pause). Restart.
+      const ranFor = Date.now() - lastStart;
+      fastEnds = ranFor < 1000 ? fastEnds + 1 : 0;
+      if (fastEnds >= 5) {
+        failListening("Voice input keeps stopping. Please tap the mic to try again.");
+        return;
+      }
+      setTimeout(() => {
+        if (wantListening) startRecognition();
+      }, 250);
+    }
+
+    function startRecognition() {
+      recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      recognition.onresult = handleResult;
+      recognition.onerror = handleError;
+      recognition.onend = handleEnd;
+      lastStart = Date.now();
+      try {
+        recognition.start();
+      } catch (error) {
+        console.error(error);
+        failListening("Voice input couldn't start. Please tap the mic to try again.");
+      }
+    }
+
+    function startListening() {
+      baseText = input.value;
+      finalText = "";
+      lastInterim = "";
+      discardResults = false;
+      fastEnds = 0;
+      wantListening = true;
+      setListeningUI(true);
+      startRecognition();
+    }
+
+    // You tapped stop: keep the words so you can edit them
+    function stopListening() {
+      wantListening = false;
+      setListeningUI(false);
+      try {
+        recognition.stop();
+      } catch (error) {
+        console.error(error);
+      }
+      input.focus();
+    }
+
+    // Used when you press Send while still listening
+    function cancelListening() {
+      if (!wantListening) return;
+      discardResults = true;
+      wantListening = false;
+      setListeningUI(false);
+      try {
+        recognition.abort();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    if (!SpeechRecognitionAPI) {
+      micButton.classList.add("unsupported");
+      showVoiceStatus(UNSUPPORTED_MESSAGE, "note");
+    }
+
+    micButton.addEventListener("click", () => {
+      if (!SpeechRecognitionAPI) {
+        showVoiceStatus(UNSUPPORTED_MESSAGE, "note");
+        return;
+      }
+      if (wantListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    });
+
+    /* ---------------------------------------------------------------
+       Camera (getUserMedia). Camera only: no gallery, no file picker.
+       The camera is switched off the moment a photo is taken or the
+       window is closed.
+    --------------------------------------------------------------- */
+
+    const MAX_PHOTO_SIDE = 2048; // photos are shrunk to this many pixels
+    const PHOTO_QUALITY = 0.92;
+
+    let cameraStream = null;
+    let cameraRequestId = 0;     // lets us ignore a camera that arrives too late
+    let capturedDataUrl = null;  // the photo being reviewed
+    let pendingImage = null;     // base64 photo waiting to be sent (no "data:" prefix)
+
+    function setCameraMessage(text) {
+      cameraMessage.textContent = text;
+    }
+
+    // mode: "live" (preview), "review" (photo taken) or "error"
+    function setCameraMode(mode) {
+      cameraVideo.hidden = mode !== "live";
+      cameraPhoto.hidden = mode !== "review";
+      captureButton.hidden = mode !== "live";
+      retakeButton.hidden = mode === "live";
+      useButton.hidden = mode !== "review";
+      retakeButton.textContent = mode === "error" ? "Try again" : "Retake";
+    }
+
+    // Switch the camera off completely
+    function stopCamera() {
+      cameraRequestId++; // cancels any camera request still waiting
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+      }
+      cameraVideo.srcObject = null;
+    }
+
+    function cameraErrorText(error) {
+      const name = error && error.name;
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        return "Camera access is blocked. Click the lock icon next to the address bar, allow the camera, then tap Try again.";
+      }
+      if (name === "NotFoundError" || name === "OverconstrainedError" || name === "DevicesNotFoundError") {
+        return "I can't find a camera on this device.";
+      }
+      if (name === "NotReadableError" || name === "TrackStartError") {
+        return "The camera is busy. Close other apps that use it, then tap Try again.";
+      }
+      return "The camera couldn't start. Please tap Try again.";
+    }
+
+    async function startCamera() {
+      stopCamera();
+      const myId = cameraRequestId;
+      capturedDataUrl = null;
+      setCameraMode("live");
+      captureButton.disabled = true;
+      setCameraMessage("Starting camera...");
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraMode("error");
+        setCameraMessage("This browser can't use the camera here. Please use Google Chrome.");
+        return;
+      }
+
+      try {
+        // "environment" is the back camera on phones. Computers use their webcam.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+          },
+          audio: false,
+        });
+
+        // The window was closed (or restarted) while we waited: switch it off again
+        if (myId !== cameraRequestId || cameraOverlay.hidden) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        cameraStream = stream;
+        cameraVideo.srcObject = stream;
+        setCameraMessage("");
+      } catch (error) {
+        if (myId !== cameraRequestId) return;
+        console.error(error);
+        setCameraMode("error");
+        setCameraMessage(cameraErrorText(error));
+      }
+    }
+
+    // Enable the Capture button once the video has a picture
+    cameraVideo.addEventListener("loadedmetadata", () => {
+      captureButton.disabled = false;
+    });
+
+    function openCamera() {
+      if (wantListening) stopListening(); // pause the mic while using the camera
+      cameraOverlay.hidden = false;
+      startCamera();
+    }
+
+    function closeCamera() {
+      stopCamera();
+      cameraOverlay.hidden = true;
+      capturedDataUrl = null;
+      cameraPhoto.removeAttribute("src");
+      setCameraMessage("");
+    }
+
+    function capturePhoto() {
+      const width = cameraVideo.videoWidth;
+      const height = cameraVideo.videoHeight;
+      if (!width || !height) return;
+
+      const scale = Math.min(1, MAX_PHOTO_SIDE / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      canvas.getContext("2d").drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+      capturedDataUrl = canvas.toDataURL("image/jpeg", PHOTO_QUALITY);
+
+      stopCamera(); // switch the camera off right away
+      cameraPhoto.src = capturedDataUrl;
+      setCameraMode("review");
+      setCameraMessage("");
+    }
+
+    function showAttachment() {
+      attachmentImg.src = "data:image/jpeg;base64," + pendingImage;
+      attachment.hidden = false;
+    }
+
+    function clearAttachment() {
+      pendingImage = null;
+      attachmentImg.removeAttribute("src");
+      attachment.hidden = true;
+    }
+
+    function usePhoto() {
+      if (!capturedDataUrl) return;
+      pendingImage = capturedDataUrl.split(",")[1]; // keep only the base64 part
+      showAttachment();
+      closeCamera();
+      input.focus();
+    }
+
+    cameraButton.addEventListener("click", openCamera);
+    closeButton.addEventListener("click", closeCamera);
+    captureButton.addEventListener("click", capturePhoto);
+    retakeButton.addEventListener("click", startCamera);
+    useButton.addEventListener("click", usePhoto);
+    attachmentRemove.addEventListener("click", clearAttachment);
+
+    // If the page is closed or hidden away, make sure the camera is off
+    window.addEventListener("pagehide", stopCamera);
+
+    // Dropped files are ignored, so nothing can be added except by the camera
+    window.addEventListener("dragover", (event) => event.preventDefault());
+    window.addEventListener("drop", (event) => event.preventDefault());
+
+    /* ---------------------------------------------------------------
+       Chat history sidebar
+    --------------------------------------------------------------- */
+
+    function openSidebar() {
+      sidebar.classList.add("open");
+      backdrop.hidden = false;
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove("open");
+      backdrop.hidden = true;
+    }
+
+    menuButton.addEventListener("click", openSidebar);
+    sidebarClose.addEventListener("click", closeSidebar);
+    backdrop.addEventListener("click", closeSidebar);
+
+    function renderChatList(chats) {
+      chatList.replaceChildren();
+
+      if (!chats.length) {
+        chatList.append(
+          el("p", "empty small", "No saved chats yet. Your chats appear here after the tutor replies.")
+        );
+        return;
+      }
+
+      chats.forEach((item) => {
+        const row = el("div", currentChat.id === item.id ? "chat-item active" : "chat-item");
+
+        const open = el("button", "chat-open", item.title);
+        open.type = "button";
+        open.title = item.title;
+        open.addEventListener("click", () => openChat(item.id));
+
+        const remove = el("button", "chat-delete", "\u00d7");
+        remove.type = "button";
+        remove.title = "Delete this chat";
+        remove.setAttribute("aria-label", "Delete chat: " + item.title);
+        remove.addEventListener("click", () => deleteChat(item.id));
+
+        row.append(open, remove);
+        chatList.append(row);
+      });
+    }
+
+    async function refreshChatList() {
+      try {
+        renderChatList(await api("/api/chats"));
+      } catch (error) {
+        console.error(error);
+        chatList.replaceChildren(el("p", "empty small", "I couldn't load your chats."));
+      }
+    }
+
+    // Empty the conversation and start a new, unsaved chat
+    function resetConversation() {
+      messages.length = 0;
+      currentChat = { id: null };
+      resetChatScreen();
+      clearAttachment();
+      input.value = "";
+      input.style.height = "auto";
+    }
+
+    function newChat() {
+      if (isSending) {
+        toast("Please wait until the tutor finishes replying.");
+        return;
+      }
+      resetConversation();
+      closeSidebar();
+      showView("chat");
+      refreshChatList();
+    }
+
+    async function openChat(id) {
+      if (isSending) {
+        toast("Please wait until the tutor finishes replying.");
+        return;
+      }
+      try {
+        const data = await api("/api/chats/" + id);
+        messages.length = 0;
+        resetChatScreen();
+        clearAttachment();
+        data.messages.forEach((m) => {
+          messages.push({ role: m.role, content: m.content });
+          addBubble(m.role === "user" ? "user" : "bot", m.content, null, m.had_photo);
+        });
+        currentChat = { id: data.id };
+        closeSidebar();
+        showView("chat");
+        refreshChatList();
+      } catch (error) {
+        console.error(error);
+        toast("I couldn't open that chat.");
+      }
+    }
+
+    async function deleteChat(id) {
+      if (currentChat.id === id && isSending) {
+        toast("Please wait until the tutor finishes replying.");
+        return;
+      }
+      if (!confirm("Delete this chat from your history?")) return;
+      try {
+        await api("/api/chats/" + id, { method: "DELETE" });
+        if (currentChat.id === id) resetConversation(); // it was the open chat
+        refreshChatList();
+      } catch (error) {
+        console.error(error);
+        toast("I couldn't delete that chat. Please try again.");
+      }
+    }
+
+    // Saving happens one at a time, in order
+    let saveQueue = Promise.resolve();
+
+    function saveChat() {
+      const target = currentChat; // remember which chat this save belongs to
+      // Photos are not saved. We only remember that there was one.
+      const snapshot = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        had_photo: Boolean(m.image),
+      }));
+      saveQueue = saveQueue
+        .then(() => doSaveChat(target, snapshot))
+        .catch((error) => {
+          console.error(error);
+          toast("I couldn't save this chat to your history.");
+        });
+    }
+
+    async function doSaveChat(target, snapshot) {
+      if (target.id !== null) {
+        try {
+          await api("/api/chats/" + target.id, jsonOptions("PUT", { messages: snapshot }));
+          refreshChatList();
+          return;
+        } catch (error) {
+          if (error.status !== 404) throw error;
+          target.id = null; // the chat was deleted meanwhile: save it as a new chat
+        }
+      }
+      const created = await api("/api/chats", jsonOptions("POST", { messages: snapshot }));
+      target.id = created.id;
+      refreshChatList();
+    }
+
+    newChatButton.addEventListener("click", newChat);
+
+    /* ---------------------------------------------------------------
+       Switching between pages (Chat, My mistakes, Progress)
+    --------------------------------------------------------------- */
+
+    function showView(name) {
+      if (wantListening) stopListening();
+      for (const [key, node] of Object.entries(views)) {
+        node.hidden = key !== name;
+      }
+      tabButtons.forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.view === name);
+      });
+      if (name === "mistakes") loadMistakes();
+      if (name === "progress") loadProgress();
+      if (name === "chat") scrollToBottom();
+    }
+
+    tabButtons.forEach((tab) => {
+      tab.addEventListener("click", () => showView(tab.dataset.view));
+    });
+
+    /* ---------------------------------------------------------------
+       My mistakes page
+    --------------------------------------------------------------- */
+
+    // Fill the filter drop-down with your concepts
+    function fillConceptFilter(concepts) {
+      const previous = conceptFilter.value;
+      const total = concepts.reduce((sum, item) => sum + item.count, 0);
+
+      conceptFilter.replaceChildren();
+      const all = el("option", "", "All concepts (" + total + ")");
+      all.value = "";
+      conceptFilter.append(all);
+
+      concepts.forEach((item) => {
+        const option = el("option", "", item.concept + " (" + item.count + ")");
+        option.value = item.concept;
+        conceptFilter.append(option);
+      });
+
+      conceptFilter.value = previous;
+      if (conceptFilter.value !== previous) conceptFilter.value = "";
+    }
+
+    function renderMistakes(rows, filtered) {
+      mistakesList.replaceChildren();
+
+      if (!rows.length) {
+        const text = filtered
+          ? "No saved mistakes for this concept."
+          : "No mistakes saved yet. Work through a question in the Chat tab, then tap \"Save this mistake\".";
+        mistakesList.append(el("p", "empty", text));
+        return;
+      }
+
+      rows.forEach((row) => {
+        const card = el("div", "card");
+        card.append(el("div", "card-top", row.date + "  |  " + row.section));
+        card.append(el("div", "card-concept", row.concept));
+        card.append(
+          el(
+            "div",
+            "card-answers",
+            "My answer: " + (row.my_answer || "not recorded") +
+              "   |   Correct: " + (row.correct_answer || "not recorded")
+          )
+        );
+        if (row.note) card.append(el("div", "card-note", row.note));
+        mistakesList.append(card);
+      });
+    }
+
+    async function loadMistakeRows() {
+      const selected = conceptFilter.value;
+      const url = selected
+        ? "/api/mistakes?concept=" + encodeURIComponent(selected)
+        : "/api/mistakes";
+      try {
+        renderMistakes(await api(url), Boolean(selected));
+      } catch (error) {
+        console.error(error);
+        mistakesList.replaceChildren(el("p", "empty", DATA_ERROR));
+      }
+    }
+
+    async function loadMistakes() {
+      mistakesList.replaceChildren(el("p", "empty", "Loading..."));
+      try {
+        fillConceptFilter(await api("/api/concepts"));
+      } catch (error) {
+        console.error(error);
+        mistakesList.replaceChildren(el("p", "empty", DATA_ERROR));
+        return;
+      }
+      loadMistakeRows();
+    }
+
+    conceptFilter.addEventListener("change", loadMistakeRows);
+
+    async function deleteAllData() {
+      if (isSending) {
+        toast("Please wait until the tutor finishes replying.");
+        return;
+      }
+      const sure = confirm(
+        "Delete ALL your saved mistakes and chat history? This cannot be undone."
+      );
+      if (!sure) return;
+      try {
+        await api("/api/data", { method: "DELETE" });
+        resetConversation(); // the chat on screen is gone too
+        refreshChatList();
+        toast("All your saved data was deleted.");
+        loadMistakes();
+      } catch (error) {
+        console.error(error);
+        toast("I couldn't delete your data. Please try again.");
+      }
+    }
+
+    deleteAllButton.addEventListener("click", deleteAllData);
+
+    /* ---------------------------------------------------------------
+       Progress page: bar chart of the concepts you miss most
+    --------------------------------------------------------------- */
+
+    function renderProgress(concepts) {
+      progressBody.replaceChildren();
+
+      if (!concepts.length) {
+        progressBody.append(
+          el("p", "empty", "Nothing to show yet. Save a few mistakes and your most-missed concepts will appear here.")
+        );
+        return;
+      }
+
+      const total = concepts.reduce((sum, item) => sum + item.count, 0);
+      progressBody.append(el("h2", "section-title", "Concepts you miss most"));
+
+      const shown = concepts.slice(0, 10);
+      const biggest = shown[0].count;
+
+      shown.forEach((item, index) => {
+        const row = el("div", "bar-row");
+
+        const top = el("div", "bar-top");
+        top.append(el("span", "bar-label", item.concept));
+        top.append(el("span", "bar-count", String(item.count)));
+
+        const track = el("div", "bar-track");
+        track.setAttribute("role", "img");
+        track.setAttribute("aria-label", item.concept + ": " + item.count + " mistakes");
+
+        // The 3 most missed concepts get the brighter bar
+        const fill = el("div", index < 3 ? "bar-fill top" : "bar-fill");
+        fill.style.width = Math.max(4, Math.round((item.count / biggest) * 100)) + "%";
+
+        track.append(fill);
+        row.append(top, track);
+        progressBody.append(row);
+      });
+
+      progressBody.append(
+        el("p", "hint", total + " mistakes saved. The 3 brighter bars are the concepts used by the quiz.")
+      );
+      if (concepts.length > 10) {
+        progressBody.append(
+          el("p", "hint", "Showing the top 10 of " + concepts.length + " concepts.")
+        );
+      }
+    }
+
+    async function loadProgress() {
+      progressBody.replaceChildren(el("p", "empty", "Loading..."));
+      try {
+        renderProgress(await api("/api/concepts"));
+      } catch (error) {
+        console.error(error);
+        progressBody.replaceChildren(el("p", "empty", DATA_ERROR));
+      }
+    }
+
+    /* ---------------------------------------------------------------
+       "Save this mistake" form
+    --------------------------------------------------------------- */
+
+    function setFormMessage(text) {
+      formMessage.textContent = text;
+    }
+
+    function openMistakeForm(draft) {
+      formSection.selectedIndex = 0;
+      if (draft && draft.section) formSection.value = draft.section;
+      formConcept.value = draft ? draft.concept : "";
+      formMy.value = draft ? draft.my_answer : "";
+      formCorrect.value = draft ? draft.correct_answer : "";
+      formNote.value = draft ? draft.note : "";
+      setFormMessage("");
+      formSave.disabled = false;
+      mistakeOverlay.hidden = false;
+      formConcept.focus();
+    }
+
+    function closeMistakeForm() {
+      mistakeOverlay.hidden = true;
+    }
+
+    // Suggest the concept names you already use
+    async function refreshConceptSuggestions() {
+      try {
+        const concepts = await api("/api/concepts");
+        conceptOptions.replaceChildren();
+        concepts.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.concept;
+          conceptOptions.append(option);
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function startSaveMistake() {
+      if (messages.length < 2) {
+        toast("Chat about an SAT question first, then save it here.");
+        return;
+      }
+      saveMistakeButton.disabled = true;
+      toast("Filling in the form from your chat...");
+
+      let draft = null;
+      try {
+        // Photos are not sent here. The tutor's text already describes them.
+        const history = messages.slice(-30).map((m) => ({ role: m.role, content: m.content }));
+        draft = await api("/api/mistakes/extract", jsonOptions("POST", { messages: history }));
+        if (!draft.found_question) {
+          toast("I couldn't find an SAT question in this chat. You can fill the form in yourself.");
+          draft = null;
+        }
+      } catch (error) {
+        console.error(error);
+        toast("I couldn't fill the form in automatically. You can type it yourself.");
+        draft = null;
+      } finally {
+        saveMistakeButton.disabled = false;
+      }
+
+      await refreshConceptSuggestions();
+      openMistakeForm(draft);
+    }
+
+    async function submitMistake() {
+      const concept = formConcept.value.trim();
+      if (!concept) {
+        setFormMessage("Please type the concept.");
+        formConcept.focus();
+        return;
+      }
+      formSave.disabled = true;
+      setFormMessage("Saving...");
+      try {
+        await api(
+          "/api/mistakes",
+          jsonOptions("POST", {
+            section: formSection.value,
+            concept: concept,
+            my_answer: formMy.value,
+            correct_answer: formCorrect.value,
+            note: formNote.value,
+          })
+        );
+        closeMistakeForm();
+        toast("Saved to My mistakes.");
+      } catch (error) {
+        console.error(error);
+        formSave.disabled = false;
+        setFormMessage(error.message);
+      }
+    }
+
+    saveMistakeButton.addEventListener("click", startSaveMistake);
+    formSave.addEventListener("click", submitMistake);
+    formCancel.addEventListener("click", closeMistakeForm);
+
+    // Escape closes whichever pop-up or drawer is open
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!mistakeOverlay.hidden) {
+        closeMistakeForm();
+      } else if (!cameraOverlay.hidden) {
+        closeCamera();
+      } else if (sidebar.classList.contains("open")) {
+        closeSidebar();
+      }
+    });
+
+    /* ---------------------------------------------------------------
+       "Quiz me on my weak concepts"
+       Finds your 3 most missed concepts and asks the tutor for a quiz.
+    --------------------------------------------------------------- */
+
+    async function quizMe() {
+      if (isSending) {
+        toast("Please wait until the tutor finishes replying.");
+        return;
+      }
+      try {
+        const concepts = await api("/api/concepts");
+        const top = concepts.slice(0, 3);
+        if (!top.length) {
+          toast("No saved mistakes yet. Save a mistake first, then I can quiz you.");
+          return;
+        }
+        const list = top
+          .map((item) => item.concept + " (missed " + item.count + (item.count === 1 ? " time)" : " times)"))
+          .join("; ");
+
+        showView("chat");
+        sendToBot(
+          "Quiz me on my weak concepts: " + list + ". " +
+            "Write 2 new original practice questions for each concept, easier first, then harder. " +
+            "Do not include the answers yet.",
+          null,
+          null
+        );
+      } catch (error) {
+        console.error(error);
+        toast(DATA_ERROR);
+      }
+    }
+
+    quizButton.addEventListener("click", quizMe);
+    quizButton2.addEventListener("click", quizMe);
+
+    /* ---------------------------------------------------------------
+       Sending messages
+    --------------------------------------------------------------- */
+
+    // Read the text box (and any photo), then send it
+    async function sendMessage() {
+      const typed = input.value.trim();
+      if ((!typed && !pendingImage) || isSending) return;
+
+      cancelListening();
+
+      const image = pendingImage;
+      input.value = "";
+      input.style.height = "auto";
+      clearAttachment();
+
+      await sendToBot(typed || PHOTO_ONLY_TEXT, image, () => {
+        // If sending fails, put your text and photo back so you can retry
+        input.value = typed;
+        if (image) {
+          pendingImage = image;
+          showAttachment();
+        }
+        autoGrow();
+      });
+    }
+
+    // A chat error that already has a friendly message to show
+    function chatError(friendly) {
+      const failure = new Error("Chat error");
+      failure.friendly = friendly;
+      return failure;
+    }
+
+    // Send one message to the tutor and show the reply as it streams in
+    async function sendToBot(text, image, restoreInput) {
+      const message = { role: "user", content: text };
+      if (image) message.image = image;
+      messages.push(message);
+      addBubble("user", text, image);
+      setBusy(true);
+
+      let botBubble = null;
+      let reply = "";
+
+      try {
+        const response = await fetch("/chat", jsonOptions("POST", { messages: messages }));
+
+        if (!response.ok || !response.body) {
+          throw chatError("The app couldn't handle that message. If it had a photo, try taking the photo again.");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          reply += decoder.decode(value, { stream: true });
+
+          // The backend adds [[CHAT_ERROR:code]] when Gemini fails
+          const errorMatch = reply.match(/\[\[CHAT_ERROR:(\w+)\]\]/);
+          if (errorMatch) {
+            throw chatError(CHAT_ERRORS[errorMatch[1]] || CHAT_ERRORS.other);
+          }
+
+          if (!botBubble) {
+            setBusy(false); // first words arrived: hide the typing dots
+            botBubble = addBubble("bot", "");
+          }
+          botBubble.textContent = reply;
+          scrollToBottom();
+        }
+
+        if (!reply.trim()) throw chatError(FRIENDLY_ERROR);
+
+        messages.push({ role: "assistant", content: reply });
+        saveChat(); // add this exchange to your chat history
+      } catch (error) {
+        console.error(error);
+        // Remove the half-finished reply and the failed question from the
+        // conversation so the history stays clean, then let the user retry.
+        if (botBubble) botBubble.remove();
+        messages.pop();
+        if (restoreInput) restoreInput();
+
+        let friendly = error.friendly;
+        if (!friendly) {
+          // A network failure means the app itself can't be reached
+          friendly = error instanceof TypeError ? NO_CONNECTION : FRIENDLY_ERROR;
+        }
+        addBubble("error", friendly);
+      } finally {
+        setBusy(false);
+        input.focus();
+      }
+    }
+
+    sendButton.addEventListener("click", sendMessage);
+
+    // Enter sends. Shift+Enter makes a new line.
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Let the text box grow a little as you type
+    input.addEventListener("input", autoGrow);
+
+    // When the page opens: load the chat list and focus the text box
+    refreshChatList();
+    input.focus();
+  </script>
+</body>
+</html>
