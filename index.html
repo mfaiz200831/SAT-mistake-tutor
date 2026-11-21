@@ -613,6 +613,25 @@
       .input-row { padding-left: 10px; padding-right: 10px; gap: 6px; }
       .icon-button { width: 42px; }
     }
+
+    /* Full-screen layout: the app fills the whole window (laptop, tablet, phone).
+       The conversation itself stays in a centered column, like Claude. */
+    :root { --gutter: max(16px, calc((100% - 820px) / 2)); }
+
+    .layout { max-width: none; }
+    .app { max-width: none; }
+    .sidebar { width: 280px; }
+
+    header, .toolbar, #chat, #voice-status, .input-row,
+    .page-bar, .page-body, .page-footer {
+      padding-left: var(--gutter);
+      padding-right: var(--gutter);
+    }
+    #attachment { margin-left: var(--gutter); margin-right: var(--gutter); }
+
+    @media (max-width: 800px) {
+      .sidebar { width: min(300px, 85vw); }
+    }
   </style>
 </head>
 <body>
@@ -874,11 +893,36 @@
       toastTimer = setTimeout(() => toastBox.classList.remove("show"), 4000);
     }
 
+    // Every browser gets its own private ID, so visitors never see each other's chats.
+    // It is made once and kept in this browser (no login needed).
+    function makeUserId() {
+      let id = "";
+      try {
+        id = localStorage.getItem("sat-tutor-user-id") || "";
+      } catch (error) {
+        // Storage is blocked. We fall back to an ID that lasts until the page closes.
+      }
+      if (!/^[A-Za-z0-9-]{16,64}$/.test(id)) {
+        id = (window.crypto && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        try {
+          localStorage.setItem("sat-tutor-user-id", id);
+        } catch (error) {
+          // Not saved, but this page still works.
+        }
+      }
+      return id;
+    }
+    const USER_ID = makeUserId();
+
     // Talk to our own backend. Returns the answer as JSON.
     async function api(path, options) {
       let response;
       try {
-        response = await fetch(path, options);
+        const withId = Object.assign({}, options || {});
+        withId.headers = Object.assign({}, withId.headers || {}, { "X-User-Id": USER_ID });
+        response = await fetch(path, withId);
       } catch (error) {
         const failure = new Error(NO_CONNECTION);
         failure.status = 0;

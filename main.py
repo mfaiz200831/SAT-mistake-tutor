@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from google import genai
 from google.genai import types
@@ -122,6 +123,16 @@ Section = Literal[
 app = FastAPI()
 client = genai.Client(api_key=API_KEY)
 
+# Each browser sends its own random ID. Everything saved (chats and mistakes)
+# belongs to that ID, so visitors never see each other's data.
+USER_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{16,64}$")
+
+
+def get_user_id(x_user_id: str = Header(default="")) -> str:
+    if not USER_ID_PATTERN.match(x_user_id):
+        raise HTTPException(status_code=400, detail="Missing or invalid visitor ID. Please refresh the page.")
+    return x_user_id
+
 
 # ---------------------------------------------------------------------
 # Database (SQLite). A small file on your computer, no server needed.
@@ -177,6 +188,12 @@ def init_db() -> None:
             )
             """
         )
+        # Older databases did not have an owner column. Add it if it is missing.
+        for table in ("mistakes", "chats"):
+            columns = [row["name"] for row in db.execute(f"PRAGMA table_info({table})")]
+            if "user_id" not in columns:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+            db.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_user ON {table}(user_id)")
         db.commit()
 
 
@@ -309,25 +326,26 @@ def store_messages(db: sqlite3.Connection, chat_id: int, messages: list[SavedMes
 
 
 @app.get("/api/chats")
-def list_chats():
+def list_chats(user_id: str = Depends(get_user_id)):
     """The chats for the sidebar, most recently used first."""
     with closing(get_db()) as db:
         rows = db.execute(
-            "SELECT id, title, updated_at FROM chats "
-            "ORDER BY updated_at DESC, id DESC LIMIT 100"
+            "SELECT id, title, updated_at FROM chats WHERE user_id = ? "
+            "ORDER BY updated_at DESC, id DESC LIMIT 100",
+            (user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
 @app.post("/api/chats")
-def create_chat(item: ChatSave):
+def create_chat(item: ChatSave, user_id: str = Depends(get_user_id)):
     """Save a brand new chat."""
     now = datetime.now().isoformat(timespec="seconds")
     title = make_title(item.messages)
     with closing(get_db()) as db:
         cursor = db.execute(
-            "INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)",
-            (title, now, now),
+            "INSERT INTO chats (title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?)",
+            (title, now, now, user_id),
         )
         chat_id = cursor.lastrowid
         store_messages(db, chat_id, item.messages)
@@ -336,10 +354,12 @@ def create_chat(item: ChatSave):
 
 
 @app.get("/api/chats/{chat_id}")
-def get_chat(chat_id: int):
+def get_chat(chat_id: int, user_id: str = Depends(get_user_id)):
     """Load one chat with all its messages."""
     with closing(get_db()) as db:
-        found = db.execute("SELECT id, title FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        found = db.execute(
+            "SELECT id, title FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)
+        ).fetchone()
         if found is None:
             raise HTTPException(status_code=404, detail="That chat was not found.")
         rows = db.execute(
@@ -358,11 +378,13 @@ def get_chat(chat_id: int):
 
 
 @app.put("/api/chats/{chat_id}")
-def update_chat(chat_id: int, item: ChatSave):
+def update_chat(chat_id: int, item: ChatSave, user_id: str = Depends(get_user_id)):
     """Save the latest messages of an existing chat."""
     now = datetime.now().isoformat(timespec="seconds")
     with closing(get_db()) as db:
-        exists = db.execute("SELECT 1 FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        exists = db.execute(
+            "SELECT 1 FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id)
+        ).fetchone()
         if exists is None:
             raise HTTPException(status_code=404, detail="That chat was not found.")
         store_messages(db, chat_id, item.messages)
@@ -372,10 +394,10 @@ def update_chat(chat_id: int, item: ChatSave):
 
 
 @app.delete("/api/chats/{chat_id}")
-def delete_chat(chat_id: int):
+def delete_chat(chat_id: int, user_id: str = Depends(get_user_id)):
     """Delete one chat (its messages are deleted with it)."""
     with closing(get_db()) as db:
-        db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+        db.execute("DELETE FROM chats WHERE id = ? AND user_id = ?", (chat_id, user_id))
         db.commit()
     return {"deleted": True}
 
@@ -413,7 +435,7 @@ class MistakeIn(BaseModel):
 
 
 @app.post("/api/mistakes/extract")
-def extract_mistake(request: ExtractRequest):
+def extract_mistake(request: ExtractRequest, user_id: str = Depends(get_user_id)):
     """Ask Gemini to fill in the 'Save this mistake' form from the chat."""
     transcript = "\n\n".join(
         ("Student: " if m.role == "user" else "Tutor: ") + m.content[:4000]
@@ -423,8 +445,9 @@ def extract_mistake(request: ExtractRequest):
     # Show Gemini the concept names you already use, so it reuses them
     with closing(get_db()) as db:
         rows = db.execute(
-            "SELECT concept FROM mistakes GROUP BY concept COLLATE NOCASE "
-            "ORDER BY MAX(id) DESC LIMIT 40"
+            "SELECT concept FROM mistakes WHERE user_id = ? GROUP BY concept COLLATE NOCASE "
+            "ORDER BY MAX(id) DESC LIMIT 40",
+            (user_id,),
         ).fetchall()
     known = [row["concept"] for row in rows]
 
@@ -456,7 +479,7 @@ def extract_mistake(request: ExtractRequest):
 
 
 @app.post("/api/mistakes")
-def save_mistake(item: MistakeIn):
+def save_mistake(item: MistakeIn, user_id: str = Depends(get_user_id)):
     """Save one mistake."""
     # Tidy the concept: remove extra spaces
     concept = " ".join(item.concept.split())
@@ -466,16 +489,16 @@ def save_mistake(item: MistakeIn):
     with closing(get_db()) as db:
         # If you already saved this concept (any capital letters), reuse its spelling
         existing = db.execute(
-            "SELECT concept FROM mistakes WHERE concept = ? COLLATE NOCASE LIMIT 1",
-            (concept,),
+            "SELECT concept FROM mistakes WHERE concept = ? COLLATE NOCASE AND user_id = ? LIMIT 1",
+            (concept, user_id),
         ).fetchone()
         if existing:
             concept = existing["concept"]
 
         # The ? marks keep your text safe: it is never mixed into the SQL itself
         cursor = db.execute(
-            "INSERT INTO mistakes (date, section, concept, my_answer, correct_answer, note) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO mistakes (date, section, concept, my_answer, correct_answer, note, user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 date.today().isoformat(),
                 item.section,
@@ -483,20 +506,23 @@ def save_mistake(item: MistakeIn):
                 item.my_answer.strip(),
                 item.correct_answer.strip(),
                 item.note.strip(),
+                user_id,
             ),
         )
         db.commit()
         row = db.execute("SELECT * FROM mistakes WHERE id = ?", (cursor.lastrowid,)).fetchone()
-    return dict(row)
+    result = dict(row)
+    result.pop("user_id", None)
+    return result
 
 
 @app.get("/api/mistakes")
-def list_mistakes(concept: str | None = None):
+def list_mistakes(concept: str | None = None, user_id: str = Depends(get_user_id)):
     """List saved mistakes, newest first. Add ?concept=... to filter."""
-    sql = "SELECT * FROM mistakes"
-    params = []
+    sql = "SELECT id, date, section, concept, my_answer, correct_answer, note FROM mistakes WHERE user_id = ?"
+    params = [user_id]
     if concept:
-        sql += " WHERE concept = ? COLLATE NOCASE"
+        sql += " AND concept = ? COLLATE NOCASE"
         params.append(concept)
     sql += " ORDER BY id DESC"
 
@@ -506,27 +532,24 @@ def list_mistakes(concept: str | None = None):
 
 
 @app.get("/api/concepts")
-def list_concepts():
+def list_concepts(user_id: str = Depends(get_user_id)):
     """Each concept with how many times you missed it, most missed first."""
     with closing(get_db()) as db:
         rows = db.execute(
-            "SELECT concept, COUNT(*) AS count FROM mistakes "
+            "SELECT concept, COUNT(*) AS count FROM mistakes WHERE user_id = ? "
             "GROUP BY concept COLLATE NOCASE "
-            "ORDER BY count DESC, MAX(id) DESC"
+            "ORDER BY count DESC, MAX(id) DESC",
+            (user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
 @app.delete("/api/data")
-def delete_all_data():
-    """Delete ALL your data: every mistake and every chat. Then shrink the file."""
+def delete_all_data(user_id: str = Depends(get_user_id)):
+    """Delete ALL of YOUR data (only this browser's): every mistake and every chat."""
     with closing(get_db()) as db:
-        cursor = db.execute("DELETE FROM mistakes")
+        cursor = db.execute("DELETE FROM mistakes WHERE user_id = ?", (user_id,))
         deleted = cursor.rowcount
-        db.execute("DELETE FROM chats")  # the messages inside are deleted too
-        db.execute(
-            "DELETE FROM sqlite_sequence WHERE name IN ('mistakes', 'chats', 'chat_messages')"
-        )
+        db.execute("DELETE FROM chats WHERE user_id = ?", (user_id,))  # messages go too
         db.commit()
-        db.execute("VACUUM")
     return {"deleted": deleted}
