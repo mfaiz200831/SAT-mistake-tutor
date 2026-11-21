@@ -26,6 +26,12 @@ Python, FastAPI, SQLite, HTML/CSS/JavaScript, Google Gemini API
 - Friendly error messages for free-limit reached, bad key, busy servers.
 
 ## How to run it
+
+It is deployed online, to visit my Chatbot use the link: 
+https://sat-mistake-tutor.onrender.com/
+
+OR
+
 1. Install Python
 2. Run `pip install -r requirements.txt`
 3. Create a file named `.env` containing `GEMINI_API_KEY=your_key_here`
