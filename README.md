@@ -1,6 +1,6 @@
 # SAT Mistake Tutor
 
-An AI tutor for the Digital SAT that helps me learn from my mistakes instead of just giving answers. I built it because [one sentence: your real reason].
+An AI tutor for the Digital SAT that helps me learn from my mistakes instead of just giving answers. I built it because i kept having issue using already existing ai models for my SAT preperation.
 
 ## What it does
 - Chat with an AI tutor that streams answers and remembers the conversation
